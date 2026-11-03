@@ -24,13 +24,19 @@ class Status(str, Enum):
 
 
 class TaskType(str, Enum):
-    """The five pipeline stages. Adding a member is a schema change."""
+    """Five base pipeline stages, then domain types. Adding a member is a schema change.
+
+    The first five are the stages open_pipeline builds (pipeline.BASE_STAGES).
+    Domain members are created by the helpers in ella_brain.domains.
+    """
 
     perceive = "perceive"
     interpret = "interpret"
     plan = "plan"
     act = "act"
     review = "review"
+    content_factory = "content_factory"
+    medical_crm = "medical_crm"
 
 
 class AgentType(str, Enum):

@@ -24,6 +24,10 @@ _ORDER = (
     TaskType.review,
 )
 
+# The five stages open_pipeline builds. TaskType also holds domain members, so
+# callers that mean "the base chain" use this, not TaskType.
+BASE_STAGES = _ORDER
+
 
 def _uuid(value: Any, field_name: str) -> UUID:
     try:

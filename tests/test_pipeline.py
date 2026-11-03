@@ -8,6 +8,7 @@ import pytest
 
 from ella_brain import (
     AgentType,
+    BASE_STAGES,
     Ella,
     EntityKind,
     MutationRejected,
@@ -49,9 +50,9 @@ def test_pipeline_source_has_no_filesystem():
 
 def test_open_pipeline_and_stage_advance(tmp_path: Path):
     ella, agent_id = _root_agent(tmp_path)
-    ids = {stage: uuid4() for stage in TaskType}
+    ids = {stage: uuid4() for stage in BASE_STAGES}
     created = open_pipeline(ella, owner=agent_id, ids=ids)
-    assert [created[stage].type for stage in TaskType] == list(TaskType)
+    assert [created[stage].type for stage in BASE_STAGES] == list(BASE_STAGES)
     assert created[TaskType.perceive].deps == []
     assert created[TaskType.interpret].deps == [ids[TaskType.perceive]]
     assert created[TaskType.review].deps == [ids[TaskType.act]]
@@ -92,7 +93,7 @@ def test_open_pipeline_and_stage_advance(tmp_path: Path):
 
 def test_later_stages_are_real_functions(tmp_path: Path):
     ella, agent_id = _root_agent(tmp_path)
-    ids = {stage: uuid4() for stage in TaskType}
+    ids = {stage: uuid4() for stage in BASE_STAGES}
     open_pipeline(ella, owner=agent_id, ids=ids)
     perceive(ella, ids[TaskType.perceive], owner=agent_id, status=Status.done)
     interpret(

@@ -19,6 +19,7 @@ ella_brain/
   models.py      external Task and Agent schemas
   gate.py        get, mutate, Ella
   pipeline.py    perceive, interpret, plan, act, review
+  domains.py     domain helpers (content_factory) on top of the base pipeline
   _stages.py     the five functions inside mutate
   _critics.py    schema critic and graph critic
   _io.py         version files (not her API)
@@ -51,7 +52,7 @@ Pass your own pair to `Ella(root, critics=(model_a, model_b))`. Each needs a dis
 
 ```python
 from uuid import uuid4
-from ella_brain import AgentType, Ella, EntityKind, Status, TaskType, open_pipeline
+from ella_brain import AgentType, BASE_STAGES, Ella, EntityKind, Status, TaskType, open_pipeline
 
 root = "/var/lib/ella-brain"  # on the VPS, any durable directory
 ella = Ella(root)
@@ -64,9 +65,26 @@ ella.mutate(EntityKind.agent, agent_id, {
     "deps": [],
 })
 
-ids = {stage: uuid4() for stage in TaskType}
+ids = {stage: uuid4() for stage in BASE_STAGES}
 tasks = open_pipeline(ella, owner=agent_id, ids=ids)
 ```
+
+## Domain task types
+
+`TaskType` holds the five base stages plus domain members: `content_factory` and `medical_crm`. The schema critic accepts them because the enum is closed. `open_pipeline` still builds only the five base stages (`BASE_STAGES`), so use `BASE_STAGES`, not `TaskType`, when you mean the base chain.
+
+Domain helpers live in `ella_brain/domains.py`. They call `get` / `mutate` only, so the graph critic applies unchanged: no cycles, no missing deps, and no `active` or `done` while a dep is unfinished.
+
+`open_content_factory` creates one `content_factory` task that depends on the base pipeline's completion node (its `review` task). It starts `pending` and cannot become `active` until that review is `done`.
+
+```python
+from ella_brain import content_factory, open_content_factory
+
+job = open_content_factory(ella, owner=agent_id, task_id=uuid4(), after=ids[TaskType.review])
+content_factory(ella, job.id, owner=agent_id, status=Status.active)  # rejected until review is done
+```
+
+`medical_crm` has no helper yet.
 
 ## Tests
 
