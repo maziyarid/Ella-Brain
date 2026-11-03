@@ -106,8 +106,16 @@ def load_current(root: Path, kind: EntityKind, entity_id: UUID) -> Any | None:
     return load_version(root, kind, entity_id, current)
 
 
+def _fsync_dir(directory: Path) -> None:
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def atomic_write(path: Path, payload: bytes) -> None:
-    """Create path exactly once via same-directory replace. Does not overwrite."""
+    """Create path exactly once via same-directory hard link. Does not overwrite."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -116,21 +124,26 @@ def atomic_write(path: Path, payload: bytes) -> None:
         dir=path.parent, prefix=".tmp-", suffix=".json"
     )
     tmp_path = Path(tmp_name)
+    published = False
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp_path, path)
-    except Exception:
+        try:
+            os.link(tmp_path, path)
+        except (FileExistsError, IsADirectoryError) as exc:
+            raise VerificationError(f"refusing to overwrite {path.name}") from exc
+        published = True
+        _fsync_dir(path.parent)
+    finally:
+        # The destination name, once linked, is independent of the
+        # temporary name, so removing the temporary name never
+        # removes the destination.
         if tmp_path.exists():
             tmp_path.unlink()
-        raise
-    directory_fd = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory_fd)
-    finally:
-        os.close(directory_fd)
+    if published:
+        _fsync_dir(path.parent)
 
 
 def fingerprint(root: Path) -> tuple[tuple[str, str], ...]:
