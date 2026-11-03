@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ella-brain"
+version = "0.1.0"
+description = "External versioned state for Ella. get and mutate only. No internal memory."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = ["pydantic>=2,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["ella_brain*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
