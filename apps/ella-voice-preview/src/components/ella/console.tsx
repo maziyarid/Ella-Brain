@@ -20,6 +20,14 @@ import {
   type Phase,
 } from "../../lib/ella/machine";
 import { afterSpokenAudioFailure, noteAfterMicrophone } from "../../lib/ella/speech-boundary";
+import {
+  cancelGateOp,
+  gatePhrase,
+  openGateSession,
+  postGateOp,
+  type BackendAccess,
+  type GateSession,
+} from "../../lib/ella/gate-client";
 
 const MEMORY_KEY = "ella-channel-preview-v0";
 
@@ -83,9 +91,13 @@ export function EllaConsole() {
   const [draft, setDraft] = useState("");
   const [speechNote, setSpeechNote] = useState("Device speech is optional. Typed Persian is the reliable path.");
   const [showPack, setShowPack] = useState(false);
+  const [backendAccess, setBackendAccess] = useState<BackendAccess>("guest");
+  const [gateNote, setGateNote] = useState("Backend access is separate from the reviewer flag. Start a session after choosing it.");
   const stateRef = useRef(state);
   const recRef = useRef<SpeechRec | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const gateRef = useRef<GateSession | null>(null);
+  const inflightRef = useRef<{ session: GateSession; requestId: string } | null>(null);
   stateRef.current = state;
 
   useEffect(() => {
@@ -132,14 +144,25 @@ export function EllaConsole() {
     window.speechSynthesis.speak(utterance);
   }
 
+  function cancelInflight() {
+    const flight = inflightRef.current;
+    inflightRef.current = null;
+    if (flight) void cancelGateOp(flight.session, flight.requestId);
+  }
+
   function commitText(text: string) {
     const current = stateRef.current;
     const id = `u-${current.epoch + 1}-${Date.now()}`;
     const now = new Date().toISOString();
-    let next = reduce(current, { type: "final_utterance", id, text, now });
-    if (next.phase === "thinking") {
+    const next = reduce(current, { type: "final_utterance", id, text, now });
+    if (next.phase !== "thinking") {
+      apply(next);
+      return;
+    }
+    const phrase = gatePhrase(text);
+    if (!phrase) {
       const plan = planTurn(next, id, text.trim());
-      next = reduce(next, {
+      const spoken = reduce(next, {
         type: "reply_ready",
         epoch: next.epoch,
         sessionId: next.sessionId ?? "",
@@ -148,19 +171,77 @@ export function EllaConsole() {
         proposal: plan.proposal,
         tool: plan.tool,
       });
-      apply(next);
-      speak(plan.reply, next.epoch, next.sessionId ?? "");
+      apply(spoken);
+      speak(plan.reply, spoken.epoch, spoken.sessionId ?? "");
       return;
     }
+    const epoch = next.epoch;
+    const sessionId = next.sessionId ?? "";
     apply(next);
+    void finishGate(text, id, epoch, sessionId);
+  }
+
+  async function finishGate(text: string, requestId: string, epoch: number, sessionId: string) {
+    const session = gateRef.current;
+    const stale = () => stateRef.current.sessionId !== sessionId || stateRef.current.epoch !== epoch;
+    if (!session) {
+      if (stale()) return;
+      const spoken = reduce(stateRef.current, {
+        type: "reply_ready",
+        epoch,
+        sessionId,
+        utteranceId: requestId,
+        reply: "درگاه محلی باز نیست. چیزی نوشته نشد.",
+        proposal: null,
+        tool: null,
+      });
+      apply(spoken);
+      speak(spoken.transcript.at(-1)?.text ?? "", spoken.epoch, sessionId);
+      return;
+    }
+    inflightRef.current = { session, requestId };
+    let result: { read_back: string };
+    try {
+      result = await postGateOp(session, requestId, text);
+    } catch {
+      result = { read_back: "درگاه پاسخ نداد. چیزی از این جمله نوشته نشد." };
+    }
+    if (inflightRef.current?.requestId === requestId) inflightRef.current = null;
+    if (stale()) {
+      void cancelGateOp(session, requestId);
+      return;
+    }
+    const spoken = reduce(stateRef.current, {
+      type: "reply_ready",
+      epoch,
+      sessionId,
+      utteranceId: requestId,
+      reply: result.read_back,
+      proposal: null,
+      tool: null,
+    });
+    apply(spoken);
+    speak(result.read_back, spoken.epoch, sessionId);
   }
 
   async function begin() {
     releaseMic();
+    cancelInflight();
     window.speechSynthesis?.cancel();
     const now = new Date().toISOString();
     const sessionId = crypto.randomUUID();
     apply(reduce(stateRef.current, { type: "start", now, sessionId }));
+    try {
+      gateRef.current = await openGateSession(backendAccess);
+      setGateNote(
+        backendAccess === "operator"
+          ? "Operator grant is held by the local server for this browser session only. It is not the reviewer flag."
+          : "Guest grant. The server will reject the synthetic gate even if the reviewer flag is on.",
+      );
+    } catch {
+      gateRef.current = null;
+      setGateNote("Local gate is not running. Typed fixture replies still work. Nothing was written.");
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -209,18 +290,21 @@ export function EllaConsole() {
   function interrupt() {
     window.speechSynthesis?.cancel();
     recRef.current?.abort();
+    cancelInflight();
     apply(reduce(stateRef.current, { type: "interrupt" }));
   }
 
   function stopAll() {
     window.speechSynthesis?.cancel();
     releaseMic();
+    cancelInflight();
     apply(reduce(stateRef.current, { type: "stop" }));
   }
 
   function endSession() {
     window.speechSynthesis?.cancel();
     releaseMic();
+    cancelInflight();
     apply(reduce(stateRef.current, { type: "end" }));
   }
 
@@ -253,7 +337,7 @@ export function EllaConsole() {
         </div>
       </header>
 
-      <section className="mb-6 grid gap-3 rounded-card border border-line bg-surface p-4 md:grid-cols-3">
+      <section className="mb-6 grid gap-3 rounded-card border border-line bg-surface p-4 md:grid-cols-2">
         <label className="flex flex-col gap-2 text-sm">
           <span className="font-medium">Principal</span>
           <select
@@ -272,7 +356,19 @@ export function EllaConsole() {
             <option value="local_reviewer">Local reviewer flag — not Maziyar auth</option>
           </select>
         </label>
-        <p className="text-sm leading-relaxed text-muted md:col-span-2">{state.note ?? "Idle. Start when you want the microphone requested."}</p>
+        <label className="flex flex-col gap-2 text-sm">
+          <span className="font-medium">Backend access</span>
+          <select
+            id="backend-access"
+            className="min-h-11 rounded-xl border border-line bg-bg px-3 text-ink"
+            value={backendAccess}
+            onChange={(event) => setBackendAccess(event.target.value === "operator" ? "operator" : "guest")}
+          >
+            <option value="guest">Guest — server rejects the gate</option>
+            <option value="operator">Operator grant — not the reviewer flag</option>
+          </select>
+        </label>
+        <p className="text-sm leading-relaxed text-muted md:col-span-2">{gateNote}</p>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]">
@@ -307,6 +403,7 @@ export function EllaConsole() {
               onClick={() => {
                 window.speechSynthesis?.cancel();
                 releaseMic();
+                cancelInflight();
                 apply(reduce(stateRef.current, { type: "kill" }));
               }}
             >

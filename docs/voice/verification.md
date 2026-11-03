@@ -1,17 +1,39 @@
 # Verification
 
-Two checks are recorded. They are not the same tree.
+Two browser passes. They are not the same run.
 
-## This commit
+## Pass A — head `ac7b9b2` only
 
-Fresh check after the race-case fix. Parent of the branch before this commit was `dc5a4f9ed00bd46b1c5682aec1a9c85da6847cf0`. Main was still `cea47fabecd1eb3ac4d5c2427afa2d09e2f98868`.
+Dev server `http://127.0.0.1:5173/` from that commit, before the gate adapter. Headless Chromium 156.0.8078.4, viewport 1280×800. The reducer was imported in the page from `/src/lib/ella/machine.ts`.
 
-| Tool | Version |
+| Check | Result |
 |---|---|
-| Node.js | v22.23.3 |
-| npm | 10.9.9 |
+| Other-session reply, same epoch | phase stayed `thinking`, tools 0, proposal null, dropped turn |
+| Reviewer to guest while pending | phase `listening`, proposal null, memories 0 |
+| Stop, then late accept and `بله` | phase `idle`, memories 0, notes "No write" and "Delayed utterance ignored" |
+| Audio unavailable, then typed `سلام` | phase returned to `thinking`; speech-failure note kept the text path |
+| UI: Start with mic denied, Stop, send `بله` | denial note visible, delayed-utterance note visible, no horizontal overflow |
 
-Working directory: `apps/ella-voice-preview`. Dependencies were already installed with `npm ci --ignore-scripts` (exit 0, `added 87 packages`).
+This pass is not evidence for later commits.
+
+## Pass B — gate adapter
+
+`ELLA_BRAIN_PIN_ROOT=/tmp/ella-brain-pin` is checkout `d01d1f15f0048d3a5874b59fb6c0759e508c6539`.
+
+```bash
+ELLA_BRAIN_PIN_ROOT=/tmp/ella-brain-pin python3 -m pytest tests/test_channel_backend.py -q
+```
+
+Exit 0. 5 passed in 1.62s.
+
+- Guest with `principal: local_reviewer` is rejected and writes no task file.
+- Operator roundtrip reads back version 1. The same request id does not add a version.
+- Invalid dependency returns no version for the rejected task. The pending dependency stays at version 1.
+- Cancel while the handler is held writes nothing.
+- A second process on the same directory rejects the old token and still reads version 1.
+- Starting the server on this branch's own `ella_brain` (not the pin) exits with `pin mismatch`.
+
+Frontend, in `apps/ella-voice-preview`, Node v22.23.3:
 
 ```bash
 npm test
@@ -19,49 +41,15 @@ npm run typecheck
 npm run build
 ```
 
-`npm test` exit 0. `node --experimental-strip-types --test tests/*.test.ts`. 15 tests, 15 pass, 0 fail. Duration about 219 ms. The four new cases are:
+`npm test` exit 0, 16 passed. `npm run typecheck` exit 0. `npm run build` exit 0 (`dist/assets/index-CmdLtXPk.js`, 253.62 kB). `dist/` is not committed.
 
-1. An old-session reply, including one with the same epoch and the other session id, does not commit during the new turn.
-2. Switching reviewer to guest while a reply is pending drops that reply, proposal, and tool.
-3. Stop drops the card. A delayed accept does not write. A delayed utterance stays idle.
-4. `provider_unavailable` leaves the phase listening, and a later typed utterance can think and reply.
+Browser pass B used that build via `vite preview` at `http://127.0.0.1:4173/` with the adapter on `127.0.0.1:8765` and store `/tmp/ella-demo-store`. Headless Chromium, microphone denied. No page errors.
 
-`npm run typecheck` (`tsc --noEmit`) exit 0.
+| Run | Viewport | Access | Typed | Seen |
+|---|---|---|---|---|
+| operator | 1280×800 | operator | `کار مصنوعی را ثبت کن` | `خوانده شد` |
+| invalid | 1280×800 | operator | `وابستگی نامعتبر را امتحان کن` | `نسخهٔ تازه‌ای نوشته نشد` |
+| guest | 1280×800 | guest | `کار مصنوعی را ثبت کن` | `مهمان اجازه` |
+| mobile | 390×844 | operator | `کار مصنوعی را ثبت کن` | `خوانده شد`, no horizontal overflow |
 
-`npm run build` (`tsc --noEmit && vite build`) exit 0:
-
-```text
-dist/index.html                   0.42 kB │ gzip:  0.28 kB
-dist/assets/index-BajrcjqZ.css    9.34 kB │ gzip:  2.88 kB
-dist/assets/index-BtY7hNgg.js   250.80 kB │ gzip: 78.87 kB
-✓ built in 619ms
-```
-
-`dist/` is not committed. Lint is not configured. Ella-Brain pytest was not run. `_io.py`, `_stages.py`, and `tests/test_lock_timeout.py` were not modified. `tests/test_atomic_write.py` was not added.
-
-Browser checks were not repeated for this commit. Do not treat the earlier headless pass as evidence for this SHA.
-
-## Earlier commit dc5a4f9
-
-Historical only. `npm test` then reported 11 pass. `tsc --noEmit` exit 0. `vite build` produced `index-BzidWerq.css` and `index-E3T9PrnC.js`. A headless Chromium pass at 1280×800 and 390×844 saw the demonstration banner, microphone denial, typed `سلام`, and no console errors. That was not a Persian speech-quality check.
-
-## No-overwrite, read only
-
-`ella_brain/_io.py` at main `cea47fabecd1eb3ac4d5c2427afa2d09e2f98868` (`atomic_write`):
-
-1. `path.parent.mkdir(parents=True, exist_ok=True)`
-2. If `path.exists()`, raise `VerificationError` and return.
-3. `tempfile.mkstemp` in the same directory.
-4. Write, flush, and `os.fsync` the temp file.
-5. `os.replace(tmp_path, path)`.
-6. `os.fsync` the directory.
-
-The existence check refuses a destination that is already there. `os.replace` will replace a destination created after that check and before the replace. This is not an atomic no-overwrite publication. This branch does not change that function. The separate hardening branch is `hardening/combined-no-overwrite-lock-timeout` and is not included here.
-
-## Not tested
-
-- Ella-Brain pytest and any lock-timeout behavior.
-- A granted microphone, a real `fa-IR` voice, recognition accuracy, or naturalness.
-- Provider sessions, telephony, webhooks, or a production deploy.
-- Account-specific Twilio eligibility.
-- A browser pass of this commit.
+Ella-Brain's existing suite was not re-run. `_io.py` and `_stages.py` in this branch are untouched.

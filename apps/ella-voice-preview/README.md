@@ -21,12 +21,25 @@ The reviewer control is a demonstration flag. It does not identify anyone. Do no
 
 - The session reducer in `src/lib/ella/machine.ts`.
 - Fixture replies and the mocked public-context receipt in `src/lib/ella/fixtures.ts`.
-- The browser console in `src/components/ella/console.tsx`.
+- Preview memory cards. Accepting one does not call Ella-Brain.
+- The two gate sentences, which call `get` and `mutate` on a disposable synthetic store when the local server is running.
 
 ## What is not real
 
-- No Ella-Brain `get` or `mutate`.
 - No provider session, no uploaded audio, no evaluated voice.
+- No conversational memory in the task store.
 - No call, no purchased number, no webhook.
 
 See `docs/voice/` and `evals/persian/fa-IR-conversational-baseline-v0/`.
+## Local gate
+
+The two Persian gate sentences in `ella_channel/phrases.json` call a localhost adapter. Preview memory (`یادت باشد`) stays mocked.
+
+```bash
+git worktree add --detach /tmp/ella-brain-pin d01d1f15f0048d3a5874b59fb6c0759e508c6539
+cd /tmp
+PYTHONPATH=/tmp/ella-brain-pin:/path/to/Ella-Brain python -m ella_channel.server --store /tmp/ella-synthetic-store --port 8765
+```
+
+Start that server before `npm run dev`. Choose backend access, then Start. Operator is not the reviewer flag. The two sentences are `کار مصنوعی را ثبت کن` and `وابستگی نامعتبر را امتحان کن`.
+
