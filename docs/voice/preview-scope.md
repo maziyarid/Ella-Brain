@@ -15,3 +15,21 @@ This page is a local browser demonstration.
 The demonstration banner says not to enter private information. The reviewer switch is visible as a flag, not a login.
 
 Persian is the primary product language. The fixture replies are fixed Persian strings plus the user's own accepted text. They are not evidence that a model is generally competent or generally incompetent at Persian. The interface has not been reviewed by a Persian editor, and device recognition quality is unknown.
+
+## Where state lives
+
+| Data | Where | Survives reload |
+|---|---|---|
+| Accepted preview memories | `localStorage` key `ella-channel-preview-v0` | yes, until Delete |
+| Session id, transcript, proposal, tool ledger | page memory only | no |
+| Reviewer flag | page memory only | no; reload returns to guest |
+
+- **Start** opens a new session id, clears the transcript, proposal, and tool ledger, and keeps accepted memories.
+- **Resume** keeps accepted memories, opens a new session, and does not promote the old transcript.
+- **Reload** drops the session and restores only accepted memories. The flag returns to guest.
+- **Stop** goes idle, drops the pending card without writing, and ignores a delayed utterance or card acceptance until Start.
+- **Audio unavailable** stays on the typed path. It does not freeze the page. The kill switch is the hard stop.
+- A reply is bound to the session id and the epoch. A reply from an older session cannot land on a newer turn, even if the epoch number matches.
+- Switching from reviewer to guest while a reply is pending drops that reply. It does not write memory and does not run the mock tool.
+
+Exact `بله` is a prototype rule for the card on screen. It is not the production design for Persian approval.

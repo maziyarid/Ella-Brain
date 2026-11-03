@@ -59,6 +59,8 @@ export interface ChannelState {
   phase: Phase;
   phaseBeforeReconnect: Phase | null;
   principal: Principal;
+  /** Principal that started the current thinking turn. Null when no turn is pending. */
+  turnPrincipal: Principal | null;
   sessionId: string | null;
   startedAt: string | null;
   epoch: number;
@@ -75,6 +77,7 @@ export const emptyChannel = (memories: MemoryRecord[] = []): ChannelState => ({
   phase: "idle",
   phaseBeforeReconnect: null,
   principal: "guest",
+  turnPrincipal: null,
   sessionId: null,
   startedAt: null,
   epoch: 0,
@@ -99,12 +102,13 @@ export type ChannelEvent =
   | {
       type: "reply_ready";
       epoch: number;
+      sessionId: string;
       utteranceId: string;
       reply: string;
       proposal: Proposal | null;
       tool: Omit<ToolReceipt, "duplicate"> | null;
     }
-  | { type: "speak_done"; epoch: number }
+  | { type: "speak_done"; epoch: number; sessionId: string }
   | { type: "provider_unavailable" }
   | { type: "reconnect" }
   | { type: "reconnect_settled" }
@@ -188,10 +192,11 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
     case "provider_unavailable":
       return {
         ...base,
-        phase: "unavailable",
+        phase: base.sessionId ? "listening" : "idle",
         partial: "",
+        turnPrincipal: null,
         epoch: base.epoch + 1,
-        note: "Audio path unavailable. Type instead, or end the session. No call was placed.",
+        note: "Audio path unavailable. Typed input still works. No call was placed.",
       };
     case "expire":
       return withExpiry(base, event.now);
@@ -213,6 +218,7 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
         startedAt: event.now,
         epoch: base.epoch + 1,
         partial: "",
+        turnPrincipal: null,
         transcript: [],
         proposal: null,
         tools: [],
@@ -228,7 +234,15 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
         note: `Resumed with ${base.memories.length} accepted preview memory record(s). Prior transcripts were not promoted.`,
       };
     case "stop":
-      return { ...base, phase: base.sessionId ? "idle" : "idle", partial: "", epoch: base.epoch + 1, note: "Stopped listening." };
+      return {
+        ...base,
+        phase: "idle",
+        partial: "",
+        proposal: null,
+        turnPrincipal: null,
+        epoch: base.epoch + 1,
+        note: "Stopped. A delayed utterance or card acceptance will not run until you start again.",
+      };
     case "mute":
       return {
         ...base,
@@ -245,6 +259,7 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
         phase: "listening",
         epoch: base.epoch + 1,
         partial: "",
+        turnPrincipal: null,
         note: "Interrupted. The in-flight reply will be dropped and will not run a tool.",
       };
     case "cancel_utterance":
@@ -254,6 +269,7 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
           phase: base.sessionId ? "listening" : "idle",
           partial: "",
           epoch: base.epoch + 1,
+          turnPrincipal: null,
           note: "Cancelled utterance. No tool. No memory proposal.",
         },
         { id: event.id, role: "user", text: event.text || "(cancelled)", disposition: "cancelled" },
@@ -261,6 +277,9 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
     case "final_utterance": {
       if (!base.sessionId || base.muted) {
         return { ...base, note: base.muted ? "Muted. Utterance ignored." : "Start a session first." };
+      }
+      if (base.phase === "idle") {
+        return { ...base, note: "Stopped. Delayed utterance ignored. No write." };
       }
       const text = normalizeUtterance(event.text);
       if (!text) {
@@ -328,15 +347,29 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
           phase: "thinking",
           partial: "",
           epoch: base.epoch + 1,
+          turnPrincipal: base.principal,
           note: "Thinking. A stale reply from an older turn cannot commit.",
         },
         userTurn,
       );
     }
     case "reply_ready": {
-      if (event.epoch !== base.epoch || base.phase !== "thinking") {
+      const wrongSession = event.sessionId !== base.sessionId;
+      const stale = event.epoch !== base.epoch || base.phase !== "thinking";
+      const principalChanged = base.turnPrincipal !== null && base.turnPrincipal !== base.principal;
+      if (wrongSession || stale || principalChanged) {
+        const cancelTurn = !wrongSession && !stale && principalChanged;
         return push(
-          { ...base, note: "Stale reply dropped. No tool. No proposal." },
+          {
+            ...base,
+            phase: cancelTurn ? "listening" : base.phase,
+            turnPrincipal: cancelTurn ? null : base.turnPrincipal,
+            note: wrongSession
+              ? "Stale reply from another session dropped. No tool. No proposal."
+              : principalChanged
+                ? "Principal changed while the reply was pending. Reviewer work was dropped. No tool. No memory write."
+                : "Stale reply dropped. No tool. No proposal.",
+          },
           {
             id: `drop-${event.utteranceId}`,
             role: "system",
@@ -368,6 +401,7 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
           ...base,
           phase: "speaking",
           tools,
+          turnPrincipal: null,
           proposal: proposal ?? base.proposal,
           note: proposal ? "Proposal only. Nothing is stored until you accept this exact card." : "Speaking fixture text. Not a language score.",
         },
@@ -375,7 +409,7 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
       );
     }
     case "speak_done":
-      if (event.epoch !== base.epoch || base.phase !== "speaking") return base;
+      if (event.sessionId !== base.sessionId || event.epoch !== base.epoch || base.phase !== "speaking") return base;
       return { ...base, phase: "listening", note: "Listening." };
     case "reconnect":
       return {
@@ -394,6 +428,9 @@ export function reduce(state: ChannelState, event: ChannelEvent): ChannelState {
         note: "Reconnected. No duplicate tool execution.",
       };
     case "accept_proposal": {
+      if (base.phase === "idle" || base.phase === "reconnecting") {
+        return { ...base, note: "No card can be accepted from this phase. No write." };
+      }
       if (!base.proposal || base.proposal.id !== event.proposalId) {
         return { ...base, note: "That proposal is not the one on screen. No write." };
       }

@@ -109,9 +109,9 @@ export function EllaConsole() {
     streamRef.current = null;
   }
 
-  function speak(text: string, epoch: number) {
+  function speak(text: string, epoch: number, sessionId: string) {
     if (typeof window === "undefined" || !window.speechSynthesis) {
-      apply(reduce(stateRef.current, { type: "speak_done", epoch }));
+      apply(reduce(stateRef.current, { type: "speak_done", epoch, sessionId }));
       return;
     }
     window.speechSynthesis.cancel();
@@ -122,11 +122,11 @@ export function EllaConsole() {
       .find((item) => item.lang.toLowerCase().startsWith("fa"));
     if (voice) utterance.voice = voice;
     utterance.onend = () => {
-      if (stateRef.current.epoch !== epoch) return;
-      apply(reduce(stateRef.current, { type: "speak_done", epoch }));
+      if (stateRef.current.epoch !== epoch || stateRef.current.sessionId !== sessionId) return;
+      apply(reduce(stateRef.current, { type: "speak_done", epoch, sessionId }));
     };
     utterance.onerror = () => {
-      if (stateRef.current.epoch !== epoch) return;
+      if (stateRef.current.epoch !== epoch || stateRef.current.sessionId !== sessionId) return;
       apply(afterSpokenAudioFailure(stateRef.current, epoch));
     };
     window.speechSynthesis.speak(utterance);
@@ -142,13 +142,14 @@ export function EllaConsole() {
       next = reduce(next, {
         type: "reply_ready",
         epoch: next.epoch,
+        sessionId: next.sessionId ?? "",
         utteranceId: id,
         reply: plan.reply,
         proposal: plan.proposal,
         tool: plan.tool,
       });
       apply(next);
-      speak(plan.reply, next.epoch);
+      speak(plan.reply, next.epoch, next.sessionId ?? "");
       return;
     }
     apply(next);

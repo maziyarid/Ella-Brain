@@ -26,6 +26,7 @@ function reply(state: ChannelState, text: string, id: string) {
   const spoken = reduce(next, {
     type: "reply_ready",
     epoch: next.epoch,
+    sessionId: next.sessionId ?? "",
     utteranceId: id,
     reply: plan.reply,
     proposal: plan.proposal,
@@ -35,7 +36,7 @@ function reply(state: ChannelState, text: string, id: string) {
 }
 
 function listen(state: ChannelState): ChannelState {
-  return reduce(state, { type: "speak_done", epoch: state.epoch });
+  return reduce(state, { type: "speak_done", epoch: state.epoch, sessionId: state.sessionId ?? "" });
 }
 
 test("guest receives no reviewer context and no memory-write capability", () => {
@@ -213,6 +214,7 @@ test("stop, interrupt, end, and kill cancel the pending activity", () => {
   const staleAfterStop = reduce(stopped, {
     type: "reply_ready",
     epoch,
+    sessionId: thinking.sessionId ?? "",
     utteranceId: "u1",
     reply: "باید حذف شود",
     proposal: null,
@@ -227,6 +229,7 @@ test("stop, interrupt, end, and kill cancel the pending activity", () => {
   const staleAfterInterrupt = reduce(interrupted, {
     type: "speak_done",
     epoch: speaking.epoch,
+    sessionId: speaking.sessionId ?? "",
   });
   assert.equal(staleAfterInterrupt.phase, "listening");
 
@@ -242,6 +245,7 @@ test("stop, interrupt, end, and kill cancel the pending activity", () => {
   const duringKill = reduce(killed, {
     type: "reply_ready",
     epoch: killed.epoch,
+    sessionId: killed.sessionId ?? "",
     utteranceId: "u3",
     reply: "نباید اجرا شود",
     proposal: null,
@@ -251,3 +255,155 @@ test("stop, interrupt, end, and kill cancel the pending activity", () => {
   assert.equal(duringKill.tools.length, 0);
   assert.match(duringKill.note ?? "", /No tool ran/);
 });
+
+test("an old-session reply arriving during a new-session turn does not commit", () => {
+  const old = reduce(start("local_reviewer"), {
+    type: "final_utterance",
+    id: "old",
+    text: "سلام",
+    now: NOW,
+  });
+  assert.equal(old.phase, "thinking");
+  const restarted = reduce(old, { type: "start", now: LATER, sessionId: "sess-2" });
+  const neu = reduce(restarted, {
+    type: "final_utterance",
+    id: "new",
+    text: "وضعیت مخزن Ella-Brain چیست؟",
+    now: LATER,
+  });
+  assert.equal(neu.sessionId, "sess-2");
+  assert.equal(neu.phase, "thinking");
+  const leaked = reduce(neu, {
+    type: "reply_ready",
+    epoch: old.epoch,
+    sessionId: "sess-1",
+    utteranceId: "old",
+    reply: "از جلسهٔ قبلی",
+    proposal: {
+      id: "mem-old",
+      memoryClass: "fact",
+      text: "نباید بنشیند",
+      utteranceId: "old",
+      action: "memory.write",
+      resource: "preview_browser_memory",
+    },
+    tool: { key: "public-context:sess-1", name: "retrieve_public_context", summary: "old" },
+  });
+  assert.equal(leaked.phase, "thinking");
+  assert.equal(leaked.sessionId, "sess-2");
+  assert.equal(leaked.tools.length, 0);
+  assert.equal(leaked.proposal, null);
+  assert.equal(leaked.memories.length, 0);
+  assert.equal(leaked.transcript.some((turn) => turn.role === "ella"), false);
+  assert.equal(leaked.transcript.some((turn) => turn.disposition === "dropped"), true);
+
+  const sameEpochWrongSession = reduce(
+    { ...neu, epoch: old.epoch },
+    {
+      type: "reply_ready",
+      epoch: old.epoch,
+      sessionId: "sess-1",
+      utteranceId: "old",
+      reply: "نباید با شمارهٔ دورهٔ برابر بنشیند",
+      proposal: null,
+      tool: { key: "public-context:sess-1", name: "retrieve_public_context", summary: "old" },
+    },
+  );
+  assert.equal(sameEpochWrongSession.tools.length, 0);
+  assert.equal(sameEpochWrongSession.phase, "thinking");
+});
+
+test("reviewer to guest while a reply is pending drops that work", () => {
+  const thinking = reduce(start("local_reviewer"), {
+    type: "final_utterance",
+    id: "pend",
+    text: "یادت باشد که جواب کوتاه می‌خواهم",
+    now: LATER,
+  });
+  assert.equal(thinking.phase, "thinking");
+  assert.equal(thinking.turnPrincipal, "local_reviewer");
+  const guest = reduce(thinking, { type: "set_principal", principal: "guest" });
+  const dropped = reduce(guest, {
+    type: "reply_ready",
+    epoch: guest.epoch,
+    sessionId: guest.sessionId ?? "",
+    utteranceId: "pend",
+    reply: "نباید برای مهمان ذخیره شود",
+    proposal: {
+      id: "mem-pend",
+      memoryClass: "preference",
+      text: "جواب کوتاه می‌خواهم",
+      utteranceId: "pend",
+      action: "memory.write",
+      resource: "preview_browser_memory",
+    },
+    tool: { key: "public-context:sess-1", name: "retrieve_public_context", summary: "hidden" },
+  });
+  assert.equal(dropped.principal, "guest");
+  assert.equal(dropped.phase, "listening");
+  assert.equal(dropped.proposal, null);
+  assert.equal(dropped.tools.length, 0);
+  assert.equal(dropped.memories.length, 0);
+  assert.equal(dropped.transcript.some((turn) => turn.role === "ella"), false);
+  assert.match(dropped.note ?? "", /Principal changed/);
+  const typed = reduce(dropped, {
+    type: "final_utterance",
+    id: "after",
+    text: "سلام",
+    now: LATER,
+  });
+  assert.equal(typed.phase, "thinking");
+  assert.equal(typed.turnPrincipal, "guest");
+});
+
+test("stop ignores a delayed utterance and a delayed card acceptance", () => {
+  const proposed = reply(start("local_reviewer"), "یادت باشد که جواب کوتاه می‌خواهم", "u1");
+  const card = proposed.spoken.proposal as Proposal;
+  const stopped = reduce(proposed.spoken, { type: "stop" });
+  assert.equal(stopped.phase, "idle");
+  assert.equal(stopped.proposal, null);
+  const lateAccept = reduce(stopped, {
+    type: "accept_proposal",
+    proposalId: card.id,
+    now: LATER,
+  });
+  assert.equal(lateAccept.memories.length, 0);
+  assert.match(lateAccept.note ?? "", /No write/);
+  const lateUtterance = reduce(stopped, {
+    type: "final_utterance",
+    id: "late",
+    text: "بله",
+    now: LATER,
+  });
+  assert.equal(lateUtterance.phase, "idle");
+  assert.equal(lateUtterance.memories.length, 0);
+  assert.match(lateUtterance.note ?? "", /Delayed utterance ignored/);
+});
+
+test("audio unavailable still accepts a later typed utterance", () => {
+  const listening = start("local_reviewer");
+  const down = reduce(listening, { type: "provider_unavailable" });
+  assert.equal(down.phase, "listening");
+  assert.match(down.note ?? "", /Typed input still works/);
+  const typed = reduce(down, {
+    type: "final_utterance",
+    id: "typed",
+    text: "سلام",
+    now: LATER,
+  });
+  assert.equal(typed.phase, "thinking");
+  assert.equal(typed.turnPrincipal, "local_reviewer");
+  const planned = planTurn(typed, "typed", "سلام");
+  const spoken = reduce(typed, {
+    type: "reply_ready",
+    epoch: typed.epoch,
+    sessionId: typed.sessionId ?? "",
+    utteranceId: "typed",
+    reply: planned.reply,
+    proposal: planned.proposal,
+    tool: planned.tool,
+  });
+  assert.equal(spoken.phase, "speaking");
+  assert.equal(spoken.transcript.some((turn) => turn.role === "ella"), true);
+});
+

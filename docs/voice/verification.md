@@ -1,63 +1,53 @@
 # Verification
 
-Fresh checks against this branch's source. Earlier App Builder screenshots were taken in a different shell and are not evidence for this tree.
+Two checks are recorded. They are not the same tree.
 
-Runtime, recorded after `npm ci` in `apps/ella-voice-preview`:
+## This commit
+
+Fresh check after the race-case fix. Parent of the branch before this commit was `dc5a4f9ed00bd46b1c5682aec1a9c85da6847cf0`. Main was still `cea47fabecd1eb3ac4d5c2427afa2d09e2f98868`.
 
 | Tool | Version |
 |---|---|
 | Node.js | v22.23.3 |
 | npm | 10.9.9 |
-| react | 19.3.1 |
-| vite | 8.3.5 |
-| typescript | 5.9.3 |
 
-Ella-Brain pytest was not run. `_io.py`, `_stages.py`, and `tests/test_lock_timeout.py` were not modified. `tests/test_atomic_write.py` was not added.
-
-Lint is not configured in this package. No eslint result is claimed.
-
-## Commands
-
-Working directory: `apps/ella-voice-preview`.
+Working directory: `apps/ella-voice-preview`. Dependencies were already installed with `npm ci --ignore-scripts` (exit 0, `added 87 packages`).
 
 ```bash
-npm ci --ignore-scripts
 npm test
 npm run typecheck
 npm run build
 ```
 
-`npm ci --ignore-scripts` exit 0. `added 87 packages`.
+`npm test` exit 0. `node --experimental-strip-types --test tests/*.test.ts`. 15 tests, 15 pass, 0 fail. Duration about 219 ms. The four new cases are:
 
-`npm test` exit 0. `node --experimental-strip-types --test tests/*.test.ts`. 11 tests, 11 pass, 0 fail. Duration about 213 ms. The tests cover guest denial, proposal-until-accept, exact proposal id, exact `بله`, expanded `بله، و به علی هم زنگ بزن`, reject and cancel, read-back, resume, duplicate mock tool plus reconnect, microphone-denial note, speech-failure return to listening, and stop / interrupt / end / kill.
+1. An old-session reply, including one with the same epoch and the other session id, does not commit during the new turn.
+2. Switching reviewer to guest while a reply is pending drops that reply, proposal, and tool.
+3. Stop drops the card. A delayed accept does not write. A delayed utterance stays idle.
+4. `provider_unavailable` leaves the phase listening, and a later typed utterance can think and reply.
 
 `npm run typecheck` (`tsc --noEmit`) exit 0.
 
-`npm run build` (`tsc --noEmit && vite build`) exit 0. Production client build:
+`npm run build` (`tsc --noEmit && vite build`) exit 0:
 
 ```text
 dist/index.html                   0.42 kB │ gzip:  0.28 kB
-dist/assets/index-BzidWerq.css   12.01 kB │ gzip:  3.41 kB
-dist/assets/index-E3T9PrnC.js   249.84 kB │ gzip: 78.63 kB
-✓ built in 706ms
+dist/assets/index-BajrcjqZ.css    9.34 kB │ gzip:  2.88 kB
+dist/assets/index-BtY7hNgg.js   250.80 kB │ gzip: 78.87 kB
+✓ built in 619ms
 ```
 
-`dist/` is not committed.
+`dist/` is not committed. Lint is not configured. Ella-Brain pytest was not run. `_io.py`, `_stages.py`, and `tests/test_lock_timeout.py` were not modified. `tests/test_atomic_write.py` was not added.
 
-## Browser
+Browser checks were not repeated for this commit. Do not treat the earlier headless pass as evidence for this SHA.
 
-Command: headless Playwright Chromium (Chrome for Testing 156.0.8078.4) against `vite preview` at `http://127.0.0.1:4173/`, permissions empty.
+## Earlier commit dc5a4f9
 
-| Viewport | Horizontal overflow | Banner | Microphone note | Typed `سلام` in transcript | Console errors |
-|---|---|---|---|---|---|
-| 1280×800 | scrollWidth 1280 = clientWidth | Demonstration only… reviewer switch is not authentication | Microphone permission denied. Type the utterance. No audio was stored. | yes | none |
-| 390×844 | scrollWidth 390 = clientWidth | same | same | yes | none |
-
-The Speaking label was not still visible 300 ms after send. Headless speech synthesis does not hold the speaking phase, which matches the reducer returning to listening when audio cannot be played. This is not a Persian speech-quality check. A granted physical microphone was not tested.
+Historical only. `npm test` then reported 11 pass. `tsc --noEmit` exit 0. `vite build` produced `index-BzidWerq.css` and `index-E3T9PrnC.js`. A headless Chromium pass at 1280×800 and 390×844 saw the demonstration banner, microphone denial, typed `سلام`, and no console errors. That was not a Persian speech-quality check.
 
 ## No-overwrite, read only
 
-`ella_brain/_io.py` at `cea47fabecd1eb3ac4d5c2427afa2d09e2f98868` (`atomic_write`):
+`ella_brain/_io.py` at main `cea47fabecd1eb3ac4d5c2427afa2d09e2f98868` (`atomic_write`):
 
 1. `path.parent.mkdir(parents=True, exist_ok=True)`
 2. If `path.exists()`, raise `VerificationError` and return.
@@ -66,7 +56,7 @@ The Speaking label was not still visible 300 ms after send. Headless speech synt
 5. `os.replace(tmp_path, path)`.
 6. `os.fsync` the directory.
 
-The existence check refuses a destination that is already there. `os.replace` will replace a destination created after that check and before the replace. This is not an atomic no-overwrite publication. This branch does not change that function.
+The existence check refuses a destination that is already there. `os.replace` will replace a destination created after that check and before the replace. This is not an atomic no-overwrite publication. This branch does not change that function. The separate hardening branch is `hardening/combined-no-overwrite-lock-timeout` and is not included here.
 
 ## Not tested
 
@@ -74,3 +64,4 @@ The existence check refuses a destination that is already there. `os.replace` wi
 - A granted microphone, a real `fa-IR` voice, recognition accuracy, or naturalness.
 - Provider sessions, telephony, webhooks, or a production deploy.
 - Account-specific Twilio eligibility.
+- A browser pass of this commit.

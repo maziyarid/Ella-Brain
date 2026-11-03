@@ -14,6 +14,10 @@ export function noteAfterMicrophone(granted: boolean): string {
 
 /** Speech-synthesis failure leaves the text reply and returns toward listening. */
 export function afterSpokenAudioFailure(state: ChannelState, epoch: number): ChannelState {
-  const listening = reduce(state, { type: "speak_done", epoch });
+  const listening = reduce(state, {
+    type: "speak_done",
+    epoch,
+    sessionId: state.sessionId ?? "",
+  });
   return { ...listening, note: SPEECH_FAIL_NOTE };
 }
