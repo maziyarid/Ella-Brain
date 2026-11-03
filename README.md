@@ -100,3 +100,7 @@ Requires Python 3.10+.
 ## Sharing
 
 Issues and pull requests are for schema changes and critique policies. Do not add a cache, a free-string field, or a second write path.
+
+## Voice preview
+
+`apps/ella-voice-preview` is a local browser prototype. It does not call `get` or `mutate`. Scope and how to run it are in `docs/voice/preview-scope.md` and `apps/ella-voice-preview/README.md`.

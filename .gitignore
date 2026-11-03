@@ -6,3 +6,5 @@ ella_data/
 *.egg-info/
 .coverage
 htmlcov/
+node_modules/
+dist/
