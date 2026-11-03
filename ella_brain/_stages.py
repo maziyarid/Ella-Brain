@@ -9,6 +9,7 @@ Not Ella's API.
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -36,6 +37,29 @@ from ella_brain.models import MODELS, MUTABLE_FIELDS, SYSTEM_FIELDS, Agent, Enti
 
 _THREAD_LOCK = threading.Lock()
 
+_LOCK_TIMEOUT_SECONDS = 5.0
+_LOCK_POLL_SECONDS = 0.05
+
+
+def _acquire_file_lock(handle: Any) -> None:
+    deadline = time.monotonic() + _LOCK_TIMEOUT_SECONDS
+
+    while True:
+        try:
+            fcntl.flock(
+                handle.fileno(),
+                fcntl.LOCK_EX | fcntl.LOCK_NB,
+            )
+            return
+        except BlockingIOError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise MutationRejected(
+                    "store lock acquisition timed out; "
+                    "no entity mutation applied"
+                )
+            time.sleep(min(_LOCK_POLL_SECONDS, remaining))
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -52,24 +76,29 @@ def _uuid(value: Any, field_name: str) -> UUID:
 
 @contextmanager
 def _root_lock(root: Path) -> Iterator[None]:
-    """One mutate at a time in this process, and across processes via flock.
-
-    A critic that calls mutate fails fast instead of deadlocking.
-    """
-
+    """Reject in-process contention; bound cross-process lock waiting."""
     if not _THREAD_LOCK.acquire(blocking=False):
         raise MutationRejected("re-entrant mutate is banned")
+
     handle = None
+    acquired = False
+
     try:
         root.mkdir(parents=True, exist_ok=True)
         handle = open(root / ".lock", "a+", encoding="utf-8")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        _acquire_file_lock(handle)
+        acquired = True
         yield
     finally:
-        if handle is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            handle.close()
-        _THREAD_LOCK.release()
+        try:
+            if handle is not None:
+                try:
+                    if acquired:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                finally:
+                    handle.close()
+        finally:
+            _THREAD_LOCK.release()
 
 
 class _ReadView:
