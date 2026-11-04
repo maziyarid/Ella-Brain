@@ -45,4 +45,4 @@ Exact-string acceptance is a prototype rule. It is not the production Persian ap
 
 ## Mocked tool
 
-`planTurn` may return `retrieve_public_context`. The summary is a frozen sentence about public `main` at `cea47fabecd1eb3ac4d5c2427afa2d09e2f98868`. The browser does not call GitHub and does not read private memory.
+`planTurn` may return `retrieve_public_context`. The summary is a frozen, SHA-free sentence (`PUBLIC_CONTEXT` in `apps/ella-voice-preview/src/lib/ella/fixtures.ts`): "Public GitHub main of maziyarid/Ella-Brain is the hardened baseline. Writes go through get and mutate only. This browser does not read people files or private memory." The browser does not call GitHub and does not read private memory.
