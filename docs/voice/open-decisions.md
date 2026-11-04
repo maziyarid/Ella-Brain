@@ -14,7 +14,7 @@ Public xAI voice pages have been reported, in earlier notes, to disagree on spee
 
 ## Pricing and retention
 
-Unresolved. No account was priced, and no retention term was accepted. Audio in this prototype is not uploaded.
+Unresolved. No account was priced, and no retention term was accepted. This prototype's code does not upload or store audio. Browser speech recognition (Web Speech API) may send audio to the browser vendor's service; that is outside this code's control.
 
 ## Browser identity and authentication
 

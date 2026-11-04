@@ -1,7 +1,7 @@
 import { reduce, type ChannelState } from "./machine.ts";
 
 export const MIC_OPEN_NOTE =
-  "Microphone is open for this turn. Audio is not uploaded or recorded.";
+  "Microphone is open for this turn. This app does not upload or store audio itself. Browser speech recognition may send audio to the browser vendor's service.";
 export const MIC_DENIED_NOTE =
   "Microphone permission denied. Type the utterance. No audio was stored.";
 export const SPEECH_FAIL_NOTE =

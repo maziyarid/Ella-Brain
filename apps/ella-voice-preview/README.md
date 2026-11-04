@@ -26,7 +26,7 @@ The reviewer control is a demonstration flag. It does not identify anyone. Do no
 
 ## What is not real
 
-- No provider session, no uploaded audio, no evaluated voice.
+- No provider session and no evaluated voice. This app does not upload or store audio itself; device speech uses the browser's Web Speech API, which may send audio to the browser vendor's service (Chromium's recognition is generally server-backed). Typed input avoids it.
 - No conversational memory in the task store.
 - No call, no purchased number, no webhook.
 
