@@ -1,7 +1,7 @@
 import type { ChannelState, MemoryClass, Proposal, ToolReceipt } from "./machine.ts";
 
 export const PUBLIC_CONTEXT =
-  "Public GitHub main of maziyarid/Ella-Brain is still cea47fabecd1eb3ac4d5c2427afa2d09e2f98868. Writes go through get and mutate only. This browser does not read people files or private memory.";
+  "Public GitHub main of maziyarid/Ella-Brain is the hardened baseline. Writes go through get and mutate only. This browser does not read people files or private memory.";
 
 const FIXTURE_NOTE = "نمونهٔ ثابت محلی است، نه ارزیابی زبان و نه نمایهٔ قلم.";
 

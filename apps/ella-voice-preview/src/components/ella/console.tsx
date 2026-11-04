@@ -328,7 +328,7 @@ export function EllaConsole() {
           <p className="text-sm font-medium text-muted">Ella · browser slice · not a telephone call</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">Persian conversation, local only</h1>
           <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted">
-            Fixture replies, not a scored voice. Main is still cea47fa. Qalam is unresolved, so nothing here is product copy.
+            Fixture replies, not a scored voice. Main is the hardened baseline. Qalam is unresolved, so nothing here is product copy.
           </p>
         </div>
         <div className="flex items-center gap-3">

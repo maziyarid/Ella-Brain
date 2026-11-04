@@ -6,6 +6,8 @@ export interface EvalItem {
   stimulus: string;
   meaningToPreserve: string;
   audio: "not_included";
+  /** True when names or addresses in the stimulus are invented. */
+  synthetic?: boolean;
 }
 
 export const EVAL_PACK = {
@@ -13,7 +15,7 @@ export const EVAL_PACK = {
   status: "unscored_development_material",
   qalamProfile: null as string | null,
   qalamResolution:
-    "No approved Qalam profile was found in Ella-Brain at cea47fa or in the Agiflow Ella project. XMemo recall was not available in this session. Do not treat these sentences as product copy.",
+    "No approved Qalam profile was found in Ella-Brain on the hardened main baseline or in the Agiflow Ella project. XMemo recall was not available in this session. Do not treat these sentences as product copy.",
   heldOut: false,
   evaluationNote:
     "Development material, not a held-out score. Stimulus fa-016 was implemented as the expanded-yes rule. No recognition, pronunciation, or naturalness score exists.",
@@ -76,8 +78,9 @@ export const EVAL_PACK = {
     {
       id: "fa-007",
       category: "name and address",
-      stimulus: "برای مازیار است، خیابان ولیعصر، پلاک ۱۲۸.",
-      meaningToPreserve: "Recipient name Maziyar and the street address with plaque 128.",
+      stimulus: "برای کاوه نمونه‌زاده است، کوچهٔ خیالی آزمون، پلاک ۰۰۰.",
+      meaningToPreserve: "Invented recipient name Kaveh Nemouneh-zadeh and the invented address (Fictional Test Alley, plaque 000).",
+      synthetic: true,
       audio: "not_included",
     },
     {

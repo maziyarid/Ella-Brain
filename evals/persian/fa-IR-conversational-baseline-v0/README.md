@@ -13,6 +13,8 @@ The preview source originally set `held_out: true`. That label is withdrawn. Sti
 
 Provenance: assembled with the browser prototype on 2026-11-03 from the same 18 stimuli and 8 criteria. No human Persian review was recorded. No recognition, pronunciation, or naturalness number exists. Training use is forbidden until a separate consent decision.
 
+Synthetic data: `fa-007` (name and address) uses an invented person and a fictional address and is flagged `synthetic: true`. No stimulus contains a real person's name paired with a real address.
+
 ## Criteria
 
 1. Meaning preservation

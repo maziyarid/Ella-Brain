@@ -2,7 +2,7 @@
   "id": "fa-IR-conversational-baseline-v0",
   "status": "unscored_development_material",
   "qalam_profile": null,
-  "qalam_resolution": "No approved Qalam profile was found in Ella-Brain at cea47fa or in the Agiflow Ella project. XMemo was not readable in this session. These stimuli are not product copy.",
+  "qalam_resolution": "No approved Qalam profile was found in Ella-Brain on the hardened main baseline or in the Agiflow Ella project. XMemo was not readable in this session. These stimuli are not product copy.",
   "held_out": false,
   "training_use": "forbidden_until_separate_consent",
   "recording": "off",
@@ -68,8 +68,10 @@
     {
       "id": "fa-007",
       "category": "name and address",
-      "stimulus": "برای مازیار است، خیابان ولیعصر، پلاک ۱۲۸.",
-      "meaning_to_preserve": "Recipient name Maziyar and the street address with plaque 128.",
+      "stimulus": "برای کاوه نمونه‌زاده است، کوچهٔ خیالی آزمون، پلاک ۰۰۰.",
+      "meaning_to_preserve": "Invented recipient name Kaveh Nemouneh-zadeh and the invented address (Fictional Test Alley, plaque 000).",
+      "synthetic": true,
+      "synthetic_note": "Invented person and fictional address. Not a real person or location.",
       "audio": "not_included"
     },
     {

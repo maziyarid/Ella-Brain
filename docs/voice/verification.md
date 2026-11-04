@@ -1,6 +1,6 @@
 # Verification
 
-Three passes. They are not the same run. Pass A and Pass B are not evidence for this head.
+Four passes. They are not the same run. Pass A and Pass B are not evidence for this head.
 
 ## Pass A — head `ac7b9b2` only
 
@@ -124,3 +124,18 @@ Browser pass C used the dev server at `http://127.0.0.1:5173/`. Headless Chromiu
 
 The reducer note is not painted as its own DOM line. The UI check is the phase and the transcript, not a second copy of that sentence.
 
+
+## Pass D — review fixes, 2026-11-03 (parent `ec6f1d8b`, this commit)
+
+Changes: removed the stale `cea47fa` SHA from on-screen copy (`console.tsx` header, `fixtures.ts` `PUBLIC_CONTEXT`) and from the pack's Qalam note (`pack.json`, `pack.ts`); they now say "hardened main baseline". Stimulus `fa-007` now uses an invented person and a fictional address and is flagged `synthetic: true` in `pack.json` and `pack.ts`, with notes in the pack README and instructions. No other stimulus changed.
+
+Frontend, in `apps/ella-voice-preview`, Node v24.22.1: `npm test` exit 0, 16 passed, 0 failed. `npm run build` (includes `tsc --noEmit`) exit 0 (`dist/assets/index-CBVqZTlf.js`, 253.70 kB). `dist/` is not committed.
+
+Backend, clean virtualenv, `pip install -e '.[dev]'`, `python -m pytest -q`: exit 0, 61 passed.
+
+Browser pass D used that build via `vite preview` at `http://127.0.0.1:4173/`. Headless Chromium 156.0.8078.4. No page errors.
+
+| Viewport | `cea47fa` on page | "hardened baseline" on page | Horizontal overflow |
+|---|---|---|---|
+| 1280×800 | absent | present | none |
+| 390×844 | absent | present | none |
