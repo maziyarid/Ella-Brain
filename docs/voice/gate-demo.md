@@ -34,4 +34,6 @@ The store directory is created empty. It is not a production root.
 
 Backend access is `guest` or `operator` on `POST /v1/sessions`. The reviewer dropdown is not sent as authority. A guest token is rejected even if the page claims to be a reviewer. Tokens live in the server process. Restarting the server keeps the version files and invalidates every token.
 
+An operator session is granted only to a loopback client whose request carries no forwarding header (`X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`, `Forwarded`) and whose `Host` and any `Origin` name `127.0.0.1`, `localhost`, or `::1` (`is_local_request` in `ella_channel/server.py`). Other requests get 403 `operator_not_local`; guest sessions are unaffected. The Vite dev and preview servers bind to `127.0.0.1` by default. Residual limit: this is not authentication. Any process or browser page served from this machine's loopback can still obtain an operator session.
+
 Each call carries `session_id` and `request_id`. Cancel before the mutate writes nothing. The same request id returns the first receipt and does not add a version.

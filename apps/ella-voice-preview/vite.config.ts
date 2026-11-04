@@ -6,6 +6,6 @@ const gate = "http://127.0.0.1:8765";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { proxy: { "/v1": gate } },
-  preview: { proxy: { "/v1": gate } },
+  server: { host: "127.0.0.1", proxy: { "/v1": gate } },
+  preview: { host: "127.0.0.1", proxy: { "/v1": gate } },
 });

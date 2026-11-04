@@ -286,3 +286,40 @@ def test_tampered_gate_file_is_refused(tmp_path: Path) -> None:
         assert "pin mismatch" in combined
         assert name in combined
 
+
+
+def _post_headers(port: int, path: str, body: dict, headers: dict) -> tuple[int, dict]:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json", **headers},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode("utf-8"))
+
+
+def test_operator_session_requires_a_local_unproxied_request(tmp_path: Path) -> None:
+    httpd = _start(tmp_path)
+    port = httpd.server_address[1]
+    try:
+        status, local = _post_headers(port, "/v1/sessions", {"access": "operator"}, {})
+        assert status == 200 and local["access"] == "operator"
+        remote_shapes = [
+            {"Host": "192.168.1.20:5173"},
+            {"X-Forwarded-For": "10.0.0.7"},
+            {"Forwarded": "for=10.0.0.7"},
+            {"Origin": "http://192.168.1.20:5173"},
+        ]
+        for headers in remote_shapes:
+            status, denied = _post_headers(port, "/v1/sessions", {"access": "operator"}, headers)
+            assert status == 403, headers
+            assert denied["error"] == "operator_not_local"
+            assert "token" not in denied
+            status, guest = _post_headers(port, "/v1/sessions", {"access": "guest"}, headers)
+            assert status == 200 and guest["access"] == "guest", headers
+    finally:
+        httpd.shutdown()

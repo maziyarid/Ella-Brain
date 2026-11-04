@@ -12,6 +12,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from ella_channel.pin import BASELINE_SHA, verify_imported_gate
@@ -19,6 +20,33 @@ from ella_channel.synthetic import invalid_dependency, roundtrip
 from ella_brain import Ella
 
 PHRASES = json.loads((Path(__file__).with_name("phrases.json")).read_text(encoding="utf-8"))
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _host_of(value: str) -> str:
+    return (urlsplit(f"//{value}").hostname or "").lower()
+
+
+def is_local_request(client_ip: str, headers: Any) -> bool:
+    """True only for a loopback client with no sign of a non-local hop.
+
+    Any forwarding header refuses. Host and Origin must name loopback, so a
+    same-machine proxy reached from another host (Host 192.168.x.y) refuses.
+    This is a prototype boundary, not authentication: any local process passes.
+    """
+    if client_ip not in ("127.0.0.1", "::1"):
+        return False
+    for name in ("X-Forwarded-For", "X-Forwarded-Host", "X-Real-IP", "Forwarded"):
+        if headers.get(name):
+            return False
+    if _host_of(headers.get("Host") or "") not in LOOPBACK_HOSTS:
+        return False
+    origin = headers.get("Origin")
+    if origin and (urlsplit(origin).hostname or "").lower() not in LOOPBACK_HOSTS:
+        return False
+    return True
+
+
 OPS = {
     PHRASES["roundtrip"]: "roundtrip",
     PHRASES["invalid_dependency"]: "invalid_dependency",
@@ -37,10 +65,12 @@ class Channel:
         self.cancelled: set[str] = set()
         self.receipts: dict[str, dict[str, Any]] = {}
 
-    def open_session(self, body: dict[str, Any]) -> dict[str, Any]:
+    def open_session(self, body: dict[str, Any], local: bool = True) -> dict[str, Any]:
         access = body.get("access")
         if access not in ("guest", "operator"):
             raise ValueError("access must be guest or operator")
+        if access == "operator" and not local:
+            raise LookupError("operator sessions are granted only to local, unproxied requests")
         token = uuid4().hex
         session_id = str(uuid4())
         with self.lock:
@@ -141,7 +171,8 @@ def make_handler(channel: Channel) -> type[BaseHTTPRequestHandler]:
             token = _bearer(self.headers.get("Authorization"))
             try:
                 if self.path == "/v1/sessions":
-                    self._send(200, channel.open_session(body))
+                    local = is_local_request(self.client_address[0], self.headers)
+                    self._send(200, channel.open_session(body, local))
                     return
                 if self.path == "/v1/cancel":
                     self._send(200, channel.cancel(token, body))
@@ -152,6 +183,9 @@ def make_handler(channel: Channel) -> type[BaseHTTPRequestHandler]:
                     return
             except PermissionError as exc:
                 self._send(401, {"ok": False, "error": "unauthorized", "read_back": str(exc)})
+                return
+            except LookupError as exc:
+                self._send(403, {"ok": False, "error": "operator_not_local", "read_back": str(exc)})
                 return
             except ValueError as exc:
                 self._send(400, {"ok": False, "error": "bad_request", "read_back": str(exc)})
