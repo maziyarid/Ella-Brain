@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from ella_channel.pin import PIN_SHA, verify_imported_io
+from ella_channel.pin import BASELINE_SHA, verify_imported_gate
 from ella_channel.synthetic import invalid_dependency, roundtrip
 from ella_brain import Ella
 
@@ -27,7 +27,7 @@ OPS = {
 
 class Channel:
     def __init__(self, root: Path, hold: threading.Event | None = None) -> None:
-        verify_imported_io()
+        self.gate_files = verify_imported_gate()
         self.root = root
         self.ella = Ella(root)
         self.lock = threading.Lock()
@@ -50,7 +50,8 @@ class Channel:
             "token": token,
             "access": access,
             "principal_ignored": True,
-            "pin": PIN_SHA,
+            "baseline": BASELINE_SHA,
+            "gate_files": self.gate_files,
         }
 
     def cancel(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -204,7 +205,7 @@ def main() -> None:
     root = Path(args.store)
     root.mkdir(parents=True, exist_ok=True)
     httpd = serve(root, args.host, args.port)
-    print(f"listening {args.host}:{httpd.server_address[1]} pin {PIN_SHA}", flush=True)
+    print(f"listening {args.host}:{httpd.server_address[1]} baseline {BASELINE_SHA}", flush=True)
     httpd.serve_forever()
 
 

@@ -35,11 +35,15 @@ See `docs/voice/` and `evals/persian/fa-IR-conversational-baseline-v0/`.
 
 The two Persian gate sentences in `ella_channel/phrases.json` call a localhost adapter. Preview memory (`یادت باشد`) stays mocked.
 
+Run the server from a checkout of this branch. It uses this tree's hardened `ella_brain` and checks both `_io.py` and `_stages.py`. No second checkout.
+
 ```bash
-git worktree add --detach /tmp/ella-brain-pin d01d1f15f0048d3a5874b59fb6c0759e508c6539
-cd /tmp
-PYTHONPATH=/tmp/ella-brain-pin:/path/to/Ella-Brain python -m ella_channel.server --store /tmp/ella-synthetic-store --port 8765
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+python -m ella_channel.server --store /tmp/ella-synthetic-store --port 8765
 ```
 
 Start that server before `npm run dev`. Choose backend access, then Start. Operator is not the reviewer flag. The two sentences are `کار مصنوعی را ثبت کن` and `وابستگی نامعتبر را امتحان کن`.
+
 

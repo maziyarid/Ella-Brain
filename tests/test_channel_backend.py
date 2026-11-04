@@ -1,13 +1,16 @@
 """Browser-channel adapter against a disposable store.
 
-Requires ELLA_BRAIN_PIN_ROOT to be a checkout of
-d01d1f15f0048d3a5874b59fb6c0759e508c6539. This file does not merge that branch.
+Uses this repository's ella_brain. The server refuses to start unless the
+imported _io.py and _stages.py match main
+9132753e4be980c75269be6de2658134e4960208.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -16,15 +19,11 @@ import urllib.request
 from pathlib import Path
 from uuid import uuid5
 
-import pytest
-
-PIN = Path(os.environ.get("ELLA_BRAIN_PIN_ROOT", ""))
 ROOT = Path(__file__).resolve().parents[1]
-if not PIN.is_dir():
-    raise RuntimeError("Set ELLA_BRAIN_PIN_ROOT to the hardening checkout. Do not merge it.")
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(PIN))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
+from ella_channel.pin import PIN_IO_SHA256, PIN_STAGES_SHA256, verify_imported_gate  # noqa: E402
 from ella_channel.server import serve  # noqa: E402
 from ella_channel.synthetic import NS  # noqa: E402
 
@@ -183,15 +182,27 @@ def test_cancel_before_mutate_writes_nothing(tmp_path: Path) -> None:
     httpd.shutdown()
 
 
-def test_restart_keeps_the_store_and_drops_authority(tmp_path: Path) -> None:
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _child_env() -> dict[str, str]:
     env = os.environ.copy()
-    env["PYTHONPATH"] = f"{PIN}{os.pathsep}{ROOT}"
-    port = 18771
+    env.pop("ELLA_BRAIN_PIN_ROOT", None)
+    env.pop("PYTHONPATH", None)
+    return env
+
+
+def test_restart_keeps_the_store_and_drops_authority(tmp_path: Path) -> None:
+    env = _child_env()
+    port = _free_port()
 
     def spawn() -> subprocess.Popen[str]:
         return subprocess.Popen(
             [sys.executable, "-m", "ella_channel.server", "--store", str(tmp_path), "--port", str(port)],
-            cwd="/tmp",
+            cwd=ROOT,
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -233,16 +244,45 @@ def test_restart_keeps_the_store_and_drops_authority(tmp_path: Path) -> None:
     second.wait(timeout=5)
 
 
-def test_unpinned_ella_brain_is_refused(tmp_path: Path) -> None:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT)
-    proc = subprocess.run(
-        [sys.executable, "-m", "ella_channel.server", "--store", str(tmp_path), "--port", "18772"],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert proc.returncode != 0
-    assert "pin mismatch" in proc.stderr + proc.stdout
+def test_imported_gate_is_this_checkout() -> None:
+    import ella_brain._io as io_module
+    import ella_brain._stages as stages_module
+
+    io_path = Path(io_module.__file__).resolve()
+    stages_path = Path(stages_module.__file__).resolve()
+    assert io_path.is_relative_to(ROOT)
+    assert stages_path.is_relative_to(ROOT)
+    found = verify_imported_gate()
+    assert found["ella_brain/_io.py"] == PIN_IO_SHA256
+    assert found["ella_brain/_stages.py"] == PIN_STAGES_SHA256
+
+
+def test_tampered_gate_file_is_refused(tmp_path: Path) -> None:
+    for name in ("_io.py", "_stages.py"):
+        pkg_parent = tmp_path / name
+        shutil.copytree(ROOT / "ella_brain", pkg_parent / "ella_brain")
+        target = pkg_parent / "ella_brain" / name
+        target.write_bytes(target.read_bytes() + b"\n# tampered\n")
+        env = _child_env()
+        env["PYTHONPATH"] = f"{pkg_parent}{os.pathsep}{ROOT}"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ella_channel.server",
+                "--store",
+                str(tmp_path / f"store-{name}"),
+                "--port",
+                "0",
+            ],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert proc.returncode != 0
+        combined = proc.stderr + proc.stdout
+        assert "pin mismatch" in combined
+        assert name in combined
+

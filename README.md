@@ -103,4 +103,5 @@ Issues and pull requests are for schema changes and critique policies. Do not ad
 
 ## Voice preview
 
-`apps/ella-voice-preview` is a local browser prototype. It does not call `get` or `mutate`. Scope and how to run it are in `docs/voice/preview-scope.md` and `apps/ella-voice-preview/README.md`.
+`apps/ella-voice-preview` is a local browser prototype. Ordinary replies and preview memory stay mocked. Two typed Persian sentences call `get` and `mutate` on a disposable synthetic store through `ella_channel`, and only when that local server is running. Setup is in `docs/voice/gate-demo.md`.
+

@@ -4,7 +4,7 @@ This page is a local browser demonstration.
 
 - The local reviewer flag is not authentication. It does not identify Maziyar or anyone else.
 - Guest and reviewer UI behavior is not production authorization.
-- Mocked tools are not a live Ella-Brain integration. Nothing calls `get` or `mutate`.
+- Fixture replies and preview-memory cards do not call `get` or `mutate`. The two sentences in `docs/voice/gate-demo.md` do, against a disposable synthetic store, when the local adapter is running. That store is not conversational memory.
 - The public repository sentence in the fixture is not private memory.
 - Accepted preview memories are not the four-component memory system. They are JSON in this browser.
 - A device `fa-IR` voice, if the browser has one, is not an evaluated Ella voice.

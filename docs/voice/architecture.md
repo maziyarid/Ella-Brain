@@ -1,12 +1,13 @@
 # Voice preview architecture
 
-Base repository commit: `cea47fabecd1eb3ac4d5c2427afa2d09e2f98868` (`main` at publication). This branch adds a browser prototype beside `ella_brain`. It does not import `ella_brain`, and it does not change `_io.py`, `_stages.py`, the Task/Agent schema, or the unpublished lock-timeout test.
+Integration baseline: `9132753e4be980c75269be6de2658134e4960208` (`main` after the hardening merge). This branch adds a browser prototype and a localhost adapter beside the hardened gate. It does not change `_io.py`, `_stages.py`, the Task/Agent schema, or the hardening tests. Those files are the merged gate, checked by hash at adapter startup.
 
 ## Boundary
 
 `apps/ella-voice-preview` is a Vite + React app. The original console ran inside a Grok App Builder shell (TanStack Start, auth scaffold, PWA injector). Those platform files are not part of Ella-Brain and are not in this branch. The editable behavior is the console, the reducer, the fixture planner, and the Persian pack.
 
-There is no Python `ella_channel` package in this branch. A local sketch (`session.py`) existed in the builder workspace and was never executed or wired to `mutate`. It is not an adapter and is not published here. A future adapter would be a separate change.
+`ella_channel` is a local adapter. It calls `Ella.get` and `Ella.mutate` for two synthetic sentences. It does not import the private write path to publish its own files. Preview memory stays in the browser.
+
 
 ## Session
 
