@@ -323,3 +323,104 @@ def test_operator_session_requires_a_local_unproxied_request(tmp_path: Path) -> 
             assert status == 200 and guest["access"] == "guest", headers
     finally:
         httpd.shutdown()
+
+
+ROUNDTRIP = "کار مصنوعی را ثبت کن"
+
+
+def _spawn_server(tmp_path: Path, port: int) -> subprocess.Popen[str]:
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "ella_channel.server", "--store", str(tmp_path), "--port", str(port)],
+        cwd=ROOT,
+        env=_child_env(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert proc.stdout is not None
+    assert "listening" in proc.stdout.readline()
+    return proc
+
+
+def _op(port: int, session: dict, request_id: str) -> tuple[int, dict]:
+    return _post(
+        port,
+        "/v1/ops",
+        {"session_id": session["session_id"], "request_id": request_id, "text": ROUNDTRIP},
+        session["token"],
+    )
+
+
+def test_same_request_id_after_restart_does_not_add_a_version(tmp_path: Path) -> None:
+    port = _free_port()
+    first = _spawn_server(tmp_path, port)
+    _, session = _post(port, "/v1/sessions", {"access": "operator"})
+    status, created = _op(port, session, "req-restart")
+    assert status == 200 and created["version"] == 1
+    first.terminate()
+    first.wait(timeout=5)
+
+    second = _spawn_server(tmp_path, port)
+    try:
+        _, fresh = _post(port, "/v1/sessions", {"access": "operator"})
+        status, again = _op(port, fresh, "req-restart")
+        assert status == 200
+        assert again["id"] == created["id"]
+        assert again["version"] == 1
+        # Receipts are in memory, so the restarted adapter does not flag the
+        # retry as a duplicate. The store stays at one version.
+        assert again["duplicate"] is False
+        assert len(_versions(tmp_path, "tasks", created["id"])) == 1
+    finally:
+        second.terminate()
+        second.wait(timeout=5)
+
+
+def test_same_request_id_from_two_concurrent_sessions_writes_once(tmp_path: Path) -> None:
+    httpd = _start(tmp_path)
+    port = httpd.server_address[1]
+    try:
+        sessions = [_post(port, "/v1/sessions", {"access": "operator"})[1] for _ in range(2)]
+        barrier = threading.Barrier(2)
+        results: list[tuple[int, dict]] = []
+
+        def run(session: dict) -> None:
+            barrier.wait()
+            results.append(_op(port, session, "req-concurrent"))
+
+        threads = [threading.Thread(target=run, args=(s,)) for s in sessions]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+        assert [status for status, _ in results] == [200, 200]
+        ids = {payload["id"] for _, payload in results}
+        assert len(ids) == 1
+        assert {payload["version"] for _, payload in results} == {1}
+        assert len(_versions(tmp_path, "tasks", ids.pop())) == 1
+    finally:
+        httpd.shutdown()
+
+
+def test_cancel_is_not_remembered_across_restart(tmp_path: Path) -> None:
+    port = _free_port()
+    first = _spawn_server(tmp_path, port)
+    _, session = _post(port, "/v1/sessions", {"access": "operator"})
+    status, _ = _post(
+        port, "/v1/cancel", {"session_id": session["session_id"], "request_id": "req-cancel"}, session["token"]
+    )
+    assert status == 200
+    status, refused = _op(port, session, "req-cancel")
+    assert status == 409 and refused["error"] == "cancelled"
+    first.terminate()
+    first.wait(timeout=5)
+
+    second = _spawn_server(tmp_path, port)
+    try:
+        _, fresh = _post(port, "/v1/sessions", {"access": "operator"})
+        status, ran = _op(port, fresh, "req-cancel")
+        # Documented limit: cancel state lives in process memory.
+        assert status == 200 and ran["version"] == 1
+    finally:
+        second.terminate()
+        second.wait(timeout=5)

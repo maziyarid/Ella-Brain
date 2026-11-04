@@ -1,6 +1,6 @@
 # Verification
 
-Four passes. They are not the same run. Pass A and Pass B are not evidence for this head.
+Five passes. They are not the same run. Pass A and Pass B are not evidence for this head.
 
 ## Pass A — head `ac7b9b2` only
 
@@ -139,3 +139,23 @@ Browser pass D used that build via `vite preview` at `http://127.0.0.1:4173/`. H
 |---|---|---|---|
 | 1280×800 | absent | present | none |
 | 390×844 | absent | present | none |
+
+## Pass E — boundary fixes, 2026-11-04 (local branch `fix/voice-boundaries` off `c37cd07`, unpushed)
+
+Each fix was first shown by a failing targeted test, then fixed:
+
+1. Operator grant: `test_operator_session_requires_a_local_unproxied_request` failed before the fix (`assert 200 == 403`). Now operator sessions need a loopback client with no forwarding headers, and with a loopback `Host` and `Origin`; guests are unaffected. `tests/boundaries.test.ts` failed before the fix (dev script had `0.0.0.0`). Vite dev and preview now bind to `127.0.0.1`.
+2. Unknown outcome: `tests/gate-outcome.test.ts` failed before the fix (`TypeError: network down` escaped `postGateOp`). A network error or non-JSON reply now returns `outcome_unknown` with a read-back saying the write may or may not have happened.
+3. Audio copy: `tests/audio-claims.test.ts` failed before the fix. The copy now says this app does not upload or store audio itself, and that browser speech recognition may send audio to the browser vendor's service.
+4. Idempotency: three new backend tests (restart retry, two concurrent sessions, cancel across restart) passed without a code change. Nothing was demonstrated, so only the limits are documented in `gate-demo.md`.
+
+Environment: Debian GNU/Linux 13, Node v24.22.1 (Node 22 not rerun), npm 11.21.1, Python 3.13.5, pytest 9.2.0, vite 8.3.5, typescript 5.9.3, react 19.3.1, Playwright 1.64.1, headless Chromium 156.0.8078.4.
+
+| Command | Exit | Result |
+|---|---|---|
+| `python -m pytest -q -rs` (clean venv, `pip install -e '.[dev]'`) | 0 | 65 passed, 0 skipped (61 earlier + 4 new) |
+| `npm test` | 0 | 20 tests, 20 pass, 0 fail, 0 skipped (16 earlier + 4 new) |
+| `npm run typecheck` | 0 | |
+| `npm run build` | 0 | `dist/assets/index-w2MNIZy6.js` 254.04 kB |
+
+Built preview and adapter: `ss` showed `127.0.0.1:4173` and `127.0.0.1:8765` only. Headless Chromium at 1280×800 and 390×844: no `cea47fa`, "hardened baseline" present, no horizontal overflow, 0 page errors. An operator `POST /v1/sessions` from the page through the Vite proxy returned 200. Through the same proxy, `curl` with `Origin: http://192.168.1.20:4173` got 403 for operator and 200 for guest. This is a page-load and session-grant check, not a full UI-to-backend conversation test.
