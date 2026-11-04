@@ -24,6 +24,7 @@ import {
   cancelGateOp,
   gatePhrase,
   openGateSession,
+  outcomeUnknown,
   postGateOp,
   type BackendAccess,
   type GateSession,
@@ -204,7 +205,7 @@ export function EllaConsole() {
     try {
       result = await postGateOp(session, requestId, text);
     } catch {
-      result = { read_back: "درگاه پاسخ نداد. چیزی از این جمله نوشته نشد." };
+      result = outcomeUnknown();
     }
     if (inflightRef.current?.requestId === requestId) inflightRef.current = null;
     if (stale()) {

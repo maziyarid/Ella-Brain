@@ -37,24 +37,43 @@ export async function openGateSession(access: BackendAccess): Promise<GateSessio
   return (await response.json()) as GateSession;
 }
 
+/** No usable reply: the adapter may or may not have written. Never claim "nothing written" here. */
+export const OUTCOME_UNKNOWN_READ_BACK =
+  "پاسخ درگاه نرسید. نتیجه نامعلوم است؛ شاید نوشته شده باشد و شاید نه. پیش از تکرار، وضعیت را بررسی کن.";
+
+export function outcomeUnknown(): GateResult {
+  return { ok: false, error: "outcome_unknown", read_back: OUTCOME_UNKNOWN_READ_BACK };
+}
+
+/** Server JSON is returned as-is. Network errors and non-JSON replies are an unknown outcome. */
 export async function postGateOp(
   session: GateSession,
   requestId: string,
   text: string,
 ): Promise<GateResult> {
-  const response = await fetch("/v1/ops", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.token}`,
-    },
-    body: JSON.stringify({
-      session_id: session.session_id,
-      request_id: requestId,
-      text,
-    }),
-  });
-  return (await response.json()) as GateResult;
+  let response: Response;
+  try {
+    response = await fetch("/v1/ops", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify({
+        session_id: session.session_id,
+        request_id: requestId,
+        text,
+      }),
+    });
+  } catch {
+    return outcomeUnknown();
+  }
+  try {
+    const result = (await response.json()) as GateResult;
+    return typeof result?.read_back === "string" ? result : outcomeUnknown();
+  } catch {
+    return outcomeUnknown();
+  }
 }
 
 export async function cancelGateOp(session: GateSession, requestId: string): Promise<void> {
