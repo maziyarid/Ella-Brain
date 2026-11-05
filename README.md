@@ -100,3 +100,8 @@ Requires Python 3.10+.
 ## Sharing
 
 Issues and pull requests are for schema changes and critique policies. Do not add a cache, a free-string field, or a second write path.
+
+## Voice preview
+
+`apps/ella-voice-preview` is a local browser prototype. Ordinary replies and preview memory stay mocked. Two typed Persian sentences call `get` and `mutate` on a disposable synthetic store through `ella_channel`, and only when that local server is running. Setup is in `docs/voice/gate-demo.md`.
+
